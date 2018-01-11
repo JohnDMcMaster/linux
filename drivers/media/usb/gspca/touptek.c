@@ -107,46 +107,35 @@ MODULE_LICENSE("GPL");
 /* Frame sync is a short read */
 #define BULK_SIZE		0x4000
 
-/* MT9E001 reg names to give a rough approximation */
-#define REG_COARSE_INTEGRATION_TIME_	0x3012
-#define REG_GROUPED_PARAMETER_HOLD_	0x3022
-#define REG_MODE_SELECT			0x0100
-#define REG_OP_SYS_CLK_DIV		0x030A
-#define REG_VT_SYS_CLK_DIV		0x0302
-#define REG_PRE_PLL_CLK_DIV		0x0304
-#define REG_VT_PIX_CLK_DIV		0x0300
-#define REG_OP_PIX_CLK_DIV		0x0308
-#define REG_PLL_MULTIPLIER		0x0306
-#define REG_COARSE_INTEGRATION_TIME_	0x3012
-#define REG_FRAME_LENGTH_LINES		0x0340
-#define REG_FRAME_LENGTH_LINES_		0x300A
-#define REG_GREEN1_GAIN			0x3056
-#define REG_GREEN2_GAIN			0x305C
-#define REG_GROUPED_PARAMETER_HOLD	0x0104
-#define REG_LINE_LENGTH_PCK_		0x300C
-#define REG_MODE_SELECT			0x0100
-#define REG_PLL_MULTIPLIER		0x0306
-#define REG_READ_MODE			0x3040
-#define REG_BLUE_GAIN			0x3058
-#define REG_RED_GAIN			0x305A
-#define REG_RESET_REGISTER		0x301A
-#define REG_SCALE_M			0x0404
-#define REG_SCALING_MODE		0x0400
-#define REG_SOFTWARE_RESET		0x0103
-#define REG_X_ADDR_END			0x0348
-#define REG_X_ADDR_START		0x0344
-#define REG_X_ADDR_START		0x0344
-#define REG_X_OUTPUT_SIZE		0x034C
-#define REG_Y_ADDR_END			0x034A
-#define REG_Y_ADDR_START		0x0346
-#define REG_Y_OUTPUT_SIZE		0x034E
+/* This is the maximum number of entries allowed in 
+ * v4l2_pix_format for any device
+ */
+#define MAX_MODES		3
 
 
 /* specific webcam descriptor */
+struct sensor {
+	int exposure_numerator[MAX_MODES];
+	int exposure_denominator[MAX_MODES];
+	int (*normalize_gain)(int in);
+	void (*config_sensor)(struct gspca_dev *);
+	void (*set_resolution)(struct gspca_dev *);
+	u16 REG_EXPOSURE;
+	u16 REG_GREEN1_GAIN;
+	u16 REG_GREEN2_GAIN;
+	u16 REG_BLUE_GAIN;
+	u16 REG_RED_GAIN;
+};
+
 struct sd {
 	struct gspca_dev gspca_dev;	/* !! must be the first item */
 	/* How many bytes this frame */
 	unsigned int this_f;
+
+	/*
+	Each sensor has its own constants
+	*/
+	const struct sensor *sensor;
 
 	/*
 	Device has separate gains for each Bayer quadrant
@@ -163,7 +152,68 @@ struct cmd {
 	u16 index;
 };
 
-static const struct v4l2_pix_format vga_mode[] = {
+enum {
+	SENSOR_UCMOS03100KPA,
+	SENSOR_UCMOS08000KPB,
+};
+
+static int normalize_gain_UCMOS08000KPB(int in);
+static void config_sensor_UCMOS08000KPB(struct gspca_dev *gspca_dev);
+static void set_resolution_UCMOS08000KPB(struct gspca_dev *gspca_dev);
+
+static int normalize_gain_UCMOS03100KPA(int in);
+static void config_sensor_UCMOS03100KPA(struct gspca_dev *gspca_dev);
+static void set_resolution_UCMOS03100KPA(struct gspca_dev *gspca_dev);
+
+static const struct sensor UCMOS03100KPA = {
+	.exposure_numerator   = {4, 4, 5},
+	.exposure_denominator = {1, 1, 1},
+	.normalize_gain       = normalize_gain_UCMOS03100KPA,
+	.config_sensor        = config_sensor_UCMOS03100KPA,
+	.set_resolution       = set_resolution_UCMOS03100KPA,
+	.REG_EXPOSURE    = 0x0009,
+	.REG_GREEN1_GAIN = 0x002B,
+	.REG_GREEN1_GAIN = 0x002E,
+	.REG_BLUE_GAIN   = 0x002C,
+	.REG_RED_GAIN    = 0x002D,
+};
+
+static const struct sensor UCMOS08000KPB = {
+	.exposure_numerator   = {5, 3, 3},
+	.exposure_denominator = {1, 1, 2},
+	.normalize_gain       = normalize_gain_UCMOS08000KPB,
+	.config_sensor        = config_sensor_UCMOS08000KPB,
+	.set_resolution       = set_resolution_UCMOS08000KPB,
+	.REG_EXPOSURE    = 0x3012,
+	.REG_GREEN1_GAIN = 0x3056,
+	.REG_GREEN1_GAIN = 0x305C,
+	.REG_BLUE_GAIN   = 0x3058,
+	.REG_RED_GAIN    = 0x305A,
+};
+/* MT9E001 reg names to give a rough approximation */
+#define REG_MODE_SELECT_UCMOS08000KPB			0x0100
+#define REG_SOFTWARE_RESET_UCMOS08000KPB		0x0103
+#define REG_GROUPED_PARAMETER_HOLD_UCMOS08000KPB	0x0104
+#define REG_VT_PIX_CLK_DIV_UCMOS08000KPB		0x0300
+#define REG_VT_SYS_CLK_DIV_UCMOS08000KPB		0x0302
+#define REG_PRE_PLL_CLK_DIV_UCMOS08000KPB		0x0304
+#define REG_PLL_MULTIPLIER_UCMOS08000KPB		0x0306
+#define REG_OP_PIX_CLK_DIV_UCMOS08000KPB		0x0308
+#define REG_OP_SYS_CLK_DIV_UCMOS08000KPB		0x030A
+#define REG_X_ADDR_START_UCMOS08000KPB			0x0344
+#define REG_Y_ADDR_START_UCMOS08000KPB			0x0346
+#define REG_X_ADDR_END_UCMOS08000KPB			0x0348
+#define REG_Y_ADDR_END_UCMOS08000KPB			0x034A
+#define REG_X_OUTPUT_SIZE_UCMOS08000KPB			0x034C
+#define REG_Y_OUTPUT_SIZE_UCMOS08000KPB			0x034E
+#define REG_SCALING_MODE_UCMOS08000KPB			0x0400
+#define REG_SCALE_M_UCMOS08000KPB			0x0404
+#define REG_FRAME_LENGTH_LINES_UCMOS08000KPB		0x300A
+#define REG_LINE_LENGTH_PCK_UCMOS08000KPB		0x300C
+#define REG_RESET_REGISTER_UCMOS08000KPB		0x301A
+#define REG_READ_MODE_UCMOS08000KPB			0x3040
+
+static const struct v4l2_pix_format UCMOS08000KPB_mode[] = {
 	{800, 600,
 		V4L2_PIX_FMT_SGRBG8,
 		V4L2_FIELD_NONE,
@@ -181,6 +231,27 @@ static const struct v4l2_pix_format vga_mode[] = {
 		V4L2_FIELD_NONE,
 		.bytesperline = 3264,
 		.sizeimage = 3264 * 2448,
+		.colorspace = V4L2_COLORSPACE_SRGB},
+};
+
+static const struct v4l2_pix_format UCMOS03100KPA_mode[] = {
+	{680, 510,
+		V4L2_PIX_FMT_SGRBG8,
+		V4L2_FIELD_NONE,
+		.bytesperline = 680,
+		.sizeimage = 680 * 510,
+		.colorspace = V4L2_COLORSPACE_SRGB},
+	{1024, 768,
+		V4L2_PIX_FMT_SGRBG8,
+		V4L2_FIELD_NONE,
+		.bytesperline = 1024,
+		.sizeimage = 1024 * 768,
+		.colorspace = V4L2_COLORSPACE_SRGB},
+	{2048, 1536,
+		V4L2_PIX_FMT_SGRBG8,
+		V4L2_FIELD_NONE,
+		.bytesperline = 2048,
+		.sizeimage = 2048 * 1536,
 		.colorspace = V4L2_COLORSPACE_SRGB},
 };
 
@@ -242,30 +313,40 @@ static void reg_w_buf(struct gspca_dev *gspca_dev,
 	} while (--l > 0);
 }
 
+static int get_mode_index(struct gspca_dev *gspca_dev)
+{
+	int i;
+	for(i = 0; i < gspca_dev->cam.nmodes; i++) {
+		if (gspca_dev->pixfmt.width == gspca_dev->cam.cam_mode[i].width) {
+			return i;
+		}
+	}
+	/* This isn't good, but we need to return something */
+	return -1;
+}
+
 static void setexposure(struct gspca_dev *gspca_dev, s32 val)
 {
+	struct sd *sd = (struct sd *) gspca_dev;
 	u16 value;
-	unsigned int w = gspca_dev->pixfmt.width;
+	int mode = get_mode_index(gspca_dev);
 
-	if (w == 800)
-		value = val * 5;
-	else if (w == 1600)
-		value = val * 3;
-	else if (w == 3264)
-		value = val * 3 / 2;
-	else {
+	if (mode == -1 || mode >= MAX_MODES) {
+		unsigned int w = gspca_dev->pixfmt.width;
 		PERR("Invalid width %u\n", w);
 		gspca_dev->usb_err = -EINVAL;
 		return;
 	}
+
+	value = val * sd->sensor->exposure_numerator[mode] / sd->sensor->exposure_denominator[mode];
 	PDEBUG(D_STREAM, "exposure: 0x%04X ms\n", value);
 	/* Wonder if theres a good reason for sending it twice */
 	/* probably not but leave it in because...why not */
-	reg_w(gspca_dev, value, REG_COARSE_INTEGRATION_TIME_);
-	reg_w(gspca_dev, value, REG_COARSE_INTEGRATION_TIME_);
+	reg_w(gspca_dev, value, sd->sensor->REG_EXPOSURE);
+	reg_w(gspca_dev, value, sd->sensor->REG_EXPOSURE);
 }
 
-static int gainify(int in)
+static int normalize_gain_UCMOS08000KPB(int in)
 {
 	/*
 	 * TODO: check if there are any issues with corner cases
@@ -280,23 +361,34 @@ static int gainify(int in)
 	else
 		return 0x1180 | in / 4;
 }
+static int normalize_gain_UCMOS03100KPA(int in)
+{
+	if (in <= 0xFF)
+		return 0x100 | (in / 8);
+	else
+		return 0x120;
+}
 
 static void setggain(struct gspca_dev *gspca_dev, u16 global_gain)
 {
+	struct sd *sd = (struct sd *) gspca_dev;
 	u16 normalized;
 
-	normalized = gainify(global_gain);
+	normalized = sd->sensor->normalize_gain(global_gain);
 	PDEBUG(D_STREAM, "gain G1/G2 (0x%04X): 0x%04X (src 0x%04X)\n",
-		 REG_GREEN1_GAIN,
+		 sd->sensor->REG_GREEN1_GAIN,
 		 normalized, global_gain);
 
-	reg_w(gspca_dev, normalized, REG_GREEN1_GAIN);
-	reg_w(gspca_dev, normalized, REG_GREEN2_GAIN);
+	reg_w(gspca_dev, normalized, sd->sensor->REG_GREEN1_GAIN);
+	//reg_w(gspca_dev, normalized, sd->sensor->REG_BLUE_GAIN);
+	//reg_w(gspca_dev, normalized, sd->sensor->REG_RED_GAIN);
+	reg_w(gspca_dev, normalized, sd->sensor->REG_GREEN2_GAIN);
 }
 
 static void setbgain(struct gspca_dev *gspca_dev,
 		u16 gain, u16 global_gain)
 {
+	struct sd *sd = (struct sd *) gspca_dev;
 	u16 normalized;
 
 	normalized = global_gain +
@@ -306,16 +398,17 @@ static void setbgain(struct gspca_dev *gspca_dev,
 			 GAIN_MAX, normalized);
 		normalized = GAIN_MAX;
 	}
-	normalized = gainify(normalized);
+	normalized = sd->sensor->normalize_gain(normalized);
 	PDEBUG(D_STREAM, "gain B (0x%04X): 0x%04X w/ source 0x%04X\n",
-		 REG_BLUE_GAIN, normalized, gain);
+		 sd->sensor->REG_BLUE_GAIN, normalized, gain);
 
-	reg_w(gspca_dev, normalized, REG_BLUE_GAIN);
+	reg_w(gspca_dev, normalized, sd->sensor->REG_BLUE_GAIN);
 }
 
 static void setrgain(struct gspca_dev *gspca_dev,
 		u16 gain, u16 global_gain)
 {
+	struct sd *sd = (struct sd *) gspca_dev;
 	u16 normalized;
 
 	normalized = global_gain +
@@ -325,48 +418,48 @@ static void setrgain(struct gspca_dev *gspca_dev,
 			 GAIN_MAX, normalized);
 		normalized = GAIN_MAX;
 	}
-	normalized = gainify(normalized);
+	normalized = sd->sensor->normalize_gain(normalized);
 	PDEBUG(D_STREAM, "gain R (0x%04X): 0x%04X w / source 0x%04X\n",
-		 REG_RED_GAIN, normalized, gain);
+		 sd->sensor->REG_RED_GAIN, normalized, gain);
 
-	reg_w(gspca_dev, normalized, REG_RED_GAIN);
+	reg_w(gspca_dev, normalized, sd->sensor->REG_RED_GAIN);
 }
 
-static void configure_wh(struct gspca_dev *gspca_dev)
+static void set_resolution_UCMOS08000KPB(struct gspca_dev *gspca_dev)
 {
 	unsigned int w = gspca_dev->pixfmt.width;
 
-	PDEBUG(D_STREAM, "configure_wh\n");
+	PDEBUG(D_STREAM, "set_resolution_UCMOS08000KPB\n");
 
 	if (w == 800) {
 		static const struct cmd reg_init_res[] = {
-			{0x0060, REG_X_ADDR_START},
-			{0x0CD9, REG_X_ADDR_END},
-			{0x0036, REG_Y_ADDR_START},
-			{0x098F, REG_Y_ADDR_END},
-			{0x07C7, REG_READ_MODE},
+			{0x0060, REG_X_ADDR_START_UCMOS08000KPB},
+			{0x0CD9, REG_X_ADDR_END_UCMOS08000KPB},
+			{0x0036, REG_Y_ADDR_START_UCMOS08000KPB},
+			{0x098F, REG_Y_ADDR_END_UCMOS08000KPB},
+			{0x07C7, REG_READ_MODE_UCMOS08000KPB},
 		};
 
 		reg_w_buf(gspca_dev,
 			       reg_init_res, ARRAY_SIZE(reg_init_res));
 	} else if (w == 1600) {
 		static const struct cmd reg_init_res[] = {
-			{0x009C, REG_X_ADDR_START},
-			{0x0D19, REG_X_ADDR_END},
-			{0x0068, REG_Y_ADDR_START},
-			{0x09C5, REG_Y_ADDR_END},
-			{0x06C3, REG_READ_MODE},
+			{0x009C, REG_X_ADDR_START_UCMOS08000KPB},
+			{0x0D19, REG_X_ADDR_END_UCMOS08000KPB},
+			{0x0068, REG_Y_ADDR_START_UCMOS08000KPB},
+			{0x09C5, REG_Y_ADDR_END_UCMOS08000KPB},
+			{0x06C3, REG_READ_MODE_UCMOS08000KPB},
 		};
 
 		reg_w_buf(gspca_dev,
 			       reg_init_res, ARRAY_SIZE(reg_init_res));
 	} else if (w == 3264) {
 		static const struct cmd reg_init_res[] = {
-			{0x00E8, REG_X_ADDR_START},
-			{0x0DA7, REG_X_ADDR_END},
-			{0x009E, REG_Y_ADDR_START},
-			{0x0A2D, REG_Y_ADDR_END},
-			{0x0241, REG_READ_MODE},
+			{0x00E8, REG_X_ADDR_START_UCMOS08000KPB},
+			{0x0DA7, REG_X_ADDR_END_UCMOS08000KPB},
+			{0x009E, REG_Y_ADDR_START_UCMOS08000KPB},
+			{0x0A2D, REG_Y_ADDR_END_UCMOS08000KPB},
+			{0x0241, REG_READ_MODE_UCMOS08000KPB},
 		};
 
 		reg_w_buf(gspca_dev,
@@ -377,20 +470,20 @@ static void configure_wh(struct gspca_dev *gspca_dev)
 		return;
 	}
 
-	reg_w(gspca_dev, 0x0000, REG_SCALING_MODE);
-	reg_w(gspca_dev, 0x0010, REG_SCALE_M);
-	reg_w(gspca_dev, w, REG_X_OUTPUT_SIZE);
-	reg_w(gspca_dev, gspca_dev->pixfmt.height, REG_Y_OUTPUT_SIZE);
+	reg_w(gspca_dev, 0x0000, REG_SCALING_MODE_UCMOS08000KPB);
+	reg_w(gspca_dev, 0x0010, REG_SCALE_M_UCMOS08000KPB);
+	reg_w(gspca_dev, w, REG_X_OUTPUT_SIZE_UCMOS08000KPB);
+	reg_w(gspca_dev, gspca_dev->pixfmt.height, REG_Y_OUTPUT_SIZE_UCMOS08000KPB);
 
 	if (w == 800) {
-		reg_w(gspca_dev, 0x0384, REG_FRAME_LENGTH_LINES_);
-		reg_w(gspca_dev, 0x0960, REG_LINE_LENGTH_PCK_);
+		reg_w(gspca_dev, 0x0384, REG_FRAME_LENGTH_LINES_UCMOS08000KPB);
+		reg_w(gspca_dev, 0x0960, REG_LINE_LENGTH_PCK_UCMOS08000KPB);
 	} else if (w == 1600) {
-		reg_w(gspca_dev, 0x0640, REG_FRAME_LENGTH_LINES_);
-		reg_w(gspca_dev, 0x0FA0, REG_LINE_LENGTH_PCK_);
+		reg_w(gspca_dev, 0x0640, REG_FRAME_LENGTH_LINES_UCMOS08000KPB);
+		reg_w(gspca_dev, 0x0FA0, REG_LINE_LENGTH_PCK_UCMOS08000KPB);
 	} else if (w == 3264) {
-		reg_w(gspca_dev, 0x0B4B, REG_FRAME_LENGTH_LINES_);
-		reg_w(gspca_dev, 0x1F40, REG_LINE_LENGTH_PCK_);
+		reg_w(gspca_dev, 0x0B4B, REG_FRAME_LENGTH_LINES_UCMOS08000KPB);
+		reg_w(gspca_dev, 0x1F40, REG_LINE_LENGTH_PCK_UCMOS08000KPB);
 	} else {
 		PERR("bad width %u\n", w);
 		gspca_dev->usb_err = -EINVAL;
@@ -399,44 +492,100 @@ static void configure_wh(struct gspca_dev *gspca_dev)
 }
 
 /* Packets that were encrypted, no idea if the grouping is significant */
-static void configure_encrypted(struct gspca_dev *gspca_dev)
+static void config_sensor_UCMOS08000KPB(struct gspca_dev *gspca_dev)
 {
+	struct sd *sd = (struct sd *) gspca_dev;
+
 	static const struct cmd reg_init_begin[] = {
-		{0x0100, REG_SOFTWARE_RESET},
-		{0x0000, REG_MODE_SELECT},
-		{0x0100, REG_GROUPED_PARAMETER_HOLD},
-		{0x0004, REG_VT_PIX_CLK_DIV},
-		{0x0001, REG_VT_SYS_CLK_DIV},
-		{0x0008, REG_OP_PIX_CLK_DIV},
-		{0x0001, REG_OP_SYS_CLK_DIV},
-		{0x0004, REG_PRE_PLL_CLK_DIV},
-		{0x0040, REG_PLL_MULTIPLIER},
-		{0x0000, REG_GROUPED_PARAMETER_HOLD},
-		{0x0100, REG_GROUPED_PARAMETER_HOLD},
+		{0x0100, REG_SOFTWARE_RESET_UCMOS08000KPB},
+		{0x0000, REG_MODE_SELECT_UCMOS08000KPB},
+		{0x0100, REG_GROUPED_PARAMETER_HOLD_UCMOS08000KPB},
+		{0x0004, REG_VT_PIX_CLK_DIV_UCMOS08000KPB},
+		{0x0001, REG_VT_SYS_CLK_DIV_UCMOS08000KPB},
+		{0x0008, REG_OP_PIX_CLK_DIV_UCMOS08000KPB},
+		{0x0001, REG_OP_SYS_CLK_DIV_UCMOS08000KPB},
+		{0x0004, REG_PRE_PLL_CLK_DIV_UCMOS08000KPB},
+		{0x0040, REG_PLL_MULTIPLIER_UCMOS08000KPB},
+		{0x0000, REG_GROUPED_PARAMETER_HOLD_UCMOS08000KPB},
+		{0x0100, REG_GROUPED_PARAMETER_HOLD_UCMOS08000KPB},
 	};
 	static const struct cmd reg_init_end[] = {
-		{0x0000, REG_GROUPED_PARAMETER_HOLD},
+		{0x0000, REG_GROUPED_PARAMETER_HOLD_UCMOS08000KPB},
 		{0x0301, 0x31AE},
 		{0x0805, 0x3064},
 		{0x0071, 0x3170},
-		{0x10DE, REG_RESET_REGISTER},
-		{0x0000, REG_MODE_SELECT},
-		{0x0010, REG_PLL_MULTIPLIER},
-		{0x0100, REG_MODE_SELECT},
+		{0x10DE, REG_RESET_REGISTER_UCMOS08000KPB},
+		{0x0000, REG_MODE_SELECT_UCMOS08000KPB},
+		{0x0010, REG_PLL_MULTIPLIER_UCMOS08000KPB},
+		{0x0100, REG_MODE_SELECT_UCMOS08000KPB},
 	};
 
 	PDEBUG(D_STREAM, "Encrypted begin, w = %u\n", gspca_dev->pixfmt.width);
 	reg_w_buf(gspca_dev, reg_init_begin, ARRAY_SIZE(reg_init_begin));
-	configure_wh(gspca_dev);
+	sd->sensor->set_resolution(gspca_dev);
 	reg_w_buf(gspca_dev, reg_init_end, ARRAY_SIZE(reg_init_end));
-	reg_w(gspca_dev, 0x0100, REG_GROUPED_PARAMETER_HOLD);
-	reg_w(gspca_dev, 0x0000, REG_GROUPED_PARAMETER_HOLD);
+	reg_w(gspca_dev, 0x0100, REG_GROUPED_PARAMETER_HOLD_UCMOS08000KPB);
+	reg_w(gspca_dev, 0x0000, REG_GROUPED_PARAMETER_HOLD_UCMOS08000KPB);
 
 	PDEBUG(D_STREAM, "Encrypted end\n");
+}
+static void set_resolution_UCMOS03100KPA(struct gspca_dev *gspca_dev)
+{
+	unsigned int w = gspca_dev->pixfmt.width;
+
+	reg_w(gspca_dev, 0x05FF, 0x0003);
+	reg_w(gspca_dev, 0x07FF, 0x0004);
+
+	if (w == 2048) {
+		reg_w(gspca_dev, 0x0000, 0x0022);
+		reg_w(gspca_dev, 0x0000, 0x0023);
+		reg_w(gspca_dev, 0x028F, 0x0005);
+	} else if (w == 1024) {
+		reg_w(gspca_dev, 0x0011, 0x0022);
+		reg_w(gspca_dev, 0x0011, 0x0023);
+		reg_w(gspca_dev, 0x149F, 0x0005);
+	} else if (w == 680) {
+		reg_w(gspca_dev, 0x0016, 0x0001);
+		reg_w(gspca_dev, 0x0024, 0x0002);
+		reg_w(gspca_dev, 0x07F7, 0x0004);
+		reg_w(gspca_dev, 0x05F9, 0x0003);
+		reg_w(gspca_dev, 0x0022, 0x0022);
+		reg_w(gspca_dev, 0x0023, 0x0022);
+		reg_w(gspca_dev, 0x0163, 0x0005);
+	} else {
+		PERR("bad width %u\n", w);
+		gspca_dev->usb_err = -EINVAL;
+		return;
+	}
+}
+static void config_sensor_UCMOS03100KPA(struct gspca_dev *gspca_dev)
+{
+	struct sd *sd = (struct sd *) gspca_dev;
+
+	reg_w(gspca_dev, 0x000A, 0x8000);
+	reg_w(gspca_dev, 0x000D, 0x0001);
+	
+	msleep(100);
+
+	reg_w(gspca_dev, 0x000D, 0x0000);
+
+	msleep(100);
+
+	reg_w(gspca_dev, 0x0001, 0x0015);
+	reg_w(gspca_dev, 0x0002, 0x0021);
+	reg_w(gspca_dev, 0x0020, 0x0000);
+	reg_w(gspca_dev, 0x001E, 0x8040);
+	reg_w(gspca_dev, 0x004E, 0x0030);
+	reg_w(gspca_dev, 0x0049, 0x0000);
+
+	sd->sensor->set_resolution(gspca_dev);
+	/* Is this related to the 'speed' setting? */	
+	reg_w(gspca_dev, 0x000A, 0x8002);
 }
 
 static int configure(struct gspca_dev *gspca_dev)
 {
+	struct sd *sd = (struct sd *) gspca_dev;
 	int rc;
 	char *buff = gspca_dev->usb_buf;
 
@@ -503,7 +652,7 @@ static int configure(struct gspca_dev *gspca_dev)
 
 	/* Large (EEPROM?) read, skip it since no idea what to do with it */
 	gspca_dev->usb_err = 0;
-	configure_encrypted(gspca_dev);
+	sd->sensor->config_sensor(gspca_dev);
 	if (gspca_dev->usb_err)
 		return gspca_dev->usb_err;
 
@@ -522,16 +671,33 @@ static int configure(struct gspca_dev *gspca_dev)
 static int sd_config(struct gspca_dev *gspca_dev,
 		     const struct usb_device_id *id)
 {
-	gspca_dev->cam.cam_mode = vga_mode;
-	gspca_dev->cam.nmodes = ARRAY_SIZE(vga_mode);
+	struct sd *sd = (struct sd *) gspca_dev;
+	struct cam *cam;
+
+	u8 sensor = id->driver_info;
+
+	cam = &gspca_dev->cam;
 
 	/* Yes we want URBs and we want them now! */
-	gspca_dev->cam.no_urb_create = 0;
-	gspca_dev->cam.bulk_nurbs = 4;
+	cam->no_urb_create = 0;
+	cam->bulk_nurbs = 4;
 	/* Largest size the windows driver uses */
-	gspca_dev->cam.bulk_size = BULK_SIZE;
+	cam->bulk_size = BULK_SIZE;
 	/* Def need to use bulk transfers */
-	gspca_dev->cam.bulk = 1;
+	cam->bulk = 1;
+
+	switch (sensor) {
+	case SENSOR_UCMOS03100KPA:
+		cam->cam_mode = UCMOS03100KPA_mode;
+		cam->nmodes = ARRAY_SIZE(UCMOS03100KPA_mode);
+		sd->sensor = &UCMOS03100KPA;
+		break;
+	case SENSOR_UCMOS08000KPB:
+		cam->cam_mode = UCMOS08000KPB_mode;
+		cam->nmodes = ARRAY_SIZE(UCMOS08000KPB_mode);
+		sd->sensor = &UCMOS08000KPB;
+		break;
+	}
 
 	return 0;
 }
@@ -657,6 +823,9 @@ static const struct sd_desc sd_desc = {
 	.pkt_scan = sd_pkt_scan,
 };
 
+#define TOUPTEK(sensor) \
+	.driver_info = (SENSOR_ ## sensor)
+
 /* Table of supported USB devices */
 static const struct usb_device_id device_table[] = {
 	/* Commented out devices should be related */
@@ -664,11 +833,11 @@ static const struct usb_device_id device_table[] = {
 	/* { USB_DEVICE(0x0547, 0x6035) },  TT UCMOS00350KPA */
 	/* { USB_DEVICE(0x0547, 0x6130) },  TT UCMOS01300KPA */
 	/* { USB_DEVICE(0x0547, 0x6200) },  TT UCMOS02000KPA */
-	/* { USB_DEVICE(0x0547, 0x6310) },  TT UCMOS03100KPA */
+	{ USB_DEVICE(0x0547, 0x6310), TOUPTEK(UCMOS03100KPA) }, /* TT UCMOS03100KPA, AS MU300 */
 	/* { USB_DEVICE(0x0547, 0x6510) },  TT UCMOS05100KPA */
 	/* { USB_DEVICE(0x0547, 0x6800) },  TT UCMOS08000KPA */
 	/* { USB_DEVICE(0x0547, 0x6801) },  TT UCMOS08000KPB */
-	{ USB_DEVICE(0x0547, 0x6801) }, /* TT UCMOS08000KPB, AS MU800 */
+	{ USB_DEVICE(0x0547, 0x6801), TOUPTEK(UCMOS08000KPB) }, /* TT UCMOS08000KPB, AS MU800 */
 	/* { USB_DEVICE(0x0547, 0x6900) },  TT UCMOS09000KPA */
 	/* { USB_DEVICE(0x0547, 0x6901) },  TT UCMOS09000KPB */
 	/* { USB_DEVICE(0x0547, 0x6010) },  TT UCMOS10000KPA */
